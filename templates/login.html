@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Stock Manager - Login</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <div class="container">
+        <div class="auth-box">
+            <h1>Stock Manager</h1>
+            <div id="login-form">
+                <h2>Login</h2>
+                <input type="text" id="login-username" placeholder="Username" required>
+                <input type="password" id="login-password" placeholder="Password" required>
+                <button onclick="login()">Login</button>
+                <p class="toggle-link">Don't have an account? <a href="#" onclick="showRegister()">Register</a></p>
+            </div>
+            <div id="register-form" style="display:none;">
+                <h2>Register as Seller</h2>
+                <input type="text" id="reg-username" placeholder="Username" required>
+                <input type="password" id="reg-password" placeholder="Password" required>
+                <input type="text" id="reg-workplace" placeholder="Workplace Location" required>
+                <button onclick="register()">Register</button>
+                <p class="toggle-link">Already have an account? <a href="#" onclick="showLogin()">Login</a></p>
+            </div>
+            <div id="message"></div>
+        </div>
+    </div>
+    <script>
+        function showRegister() {
+            document.getElementById('login-form').style.display = 'none';
+            document.getElementById('register-form').style.display = 'block';
+            document.getElementById('message').textContent = '';
+        }
+
+        function showLogin() {
+            document.getElementById('register-form').style.display = 'none';
+            document.getElementById('login-form').style.display = 'block';
+            document.getElementById('message').textContent = '';
+        }
+
+        async function login() {
+            const username = document.getElementById('login-username').value;
+            const password = document.getElementById('login-password').value;
+            
+            const res = await fetch('/login', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({username, password})
+            });
+            
+            if (res.ok) {
+                window.location.href = '/dashboard';
+            } else {
+                document.getElementById('message').textContent = 'Invalid credentials';
+            }
+        }
+
+        async function register() {
+            const username = document.getElementById('reg-username').value;
+            const password = document.getElementById('reg-password').value;
+            const workplace = document.getElementById('reg-workplace').value;
+            
+            const res = await fetch('/register', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({username, password, workplace})
+            });
+            
+            const data = await res.json();
+            if (data.success) {
+                document.getElementById('message').textContent = 'Registration successful! Please login.';
+                showLogin();
+            } else {
+                document.getElementById('message').textContent = data.message;
+            }
+        }
+    </script>
+</body>
+</html>

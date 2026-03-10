@@ -1,0 +1,394 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Stock Manager - Dashboard</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <div class="navbar">
+        <h1 id="navbar-title">Stock Manager</h1>
+        <div>
+            <span id="user-info"></span>
+            <a href="/logout" class="logout-btn">Logout</a>
+        </div>
+    </div>
+    
+    <div class="container">
+        <div class="stock-section" id="stats-section" style="display:none;">
+            <h2>Statistics Overview</h2>
+            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:15px;margin-bottom:20px;">
+                <div style="background:#667eea;color:white;padding:20px;border-radius:8px;text-align:center;">
+                    <div style="font-size:32px;font-weight:bold;" id="stat-total-products">0</div>
+                    <div style="font-size:14px;margin-top:5px;">Total Products</div>
+                </div>
+                <div style="background:#27ae60;color:white;padding:20px;border-radius:8px;text-align:center;">
+                    <div style="font-size:32px;font-weight:bold;" id="stat-total-sellers">0</div>
+                    <div style="font-size:14px;margin-top:5px;">Total Sellers</div>
+                </div>
+                <div style="background:#f39c12;color:white;padding:20px;border-radius:8px;text-align:center;">
+                    <div style="font-size:32px;font-weight:bold;" id="stat-low-stock">0</div>
+                    <div style="font-size:14px;margin-top:5px;">Low Stock Items</div>
+                </div>
+                <div style="background:#e74c3c;color:white;padding:20px;border-radius:8px;text-align:center;">
+                    <div style="font-size:32px;font-weight:bold;" id="stat-pending-requests">0</div>
+                    <div style="font-size:14px;margin-top:5px;">Pending Requests</div>
+                </div>
+            </div>
+            <h3 style="margin-top:20px;margin-bottom:10px;">Seller Performance Rankings</h3>
+            <div id="top-sellers-table"></div>
+        </div>
+
+        <div class="add-product-section" id="add-section">
+            <h2 id="section-title">Add New Product</h2>
+            <div class="form-row">
+                <input type="text" id="product-name" placeholder="Product Name">
+                <input type="text" id="product-type" placeholder="Product Type">
+                <input type="number" id="product-quantity" placeholder="Quantity" min="0">
+                <button onclick="addProduct()" id="add-btn">Add Product</button>
+                <button onclick="requestProduct()" id="request-btn" style="display:none;background:#f39c12;">Request from Manager</button>
+            </div>
+        </div>
+
+        <div class="stock-section">
+            <h2 id="stock-title">Stock Overview - All Locations</h2>
+            <div id="stock-table"></div>
+            <div id="total-summary" style="margin-top:20px;padding:15px;background:#f8f9fa;border-radius:8px;font-weight:600;font-size:16px;"></div>
+        </div>
+
+        <div class="stock-section" id="requests-section" style="display:none;">
+            <h2>Product Requests</h2>
+            <div id="requests-table"></div>
+        </div>
+
+        <div class="stock-section" id="users-section" style="display:none;">
+            <h2>Manage Users</h2>
+            <div id="users-table"></div>
+        </div>
+
+        <div class="stock-section" id="add-product-for-user" style="display:none;">
+            <h2 id="add-product-title">Add Product for User</h2>
+            <div class="form-row">
+                <input type="text" id="user-product-name" placeholder="Product Name">
+                <input type="text" id="user-product-type" placeholder="Product Type">
+                <input type="number" id="user-product-quantity" placeholder="Quantity" min="0">
+                <button onclick="addProductForUser()" style="background:#27ae60;">Add Product</button>
+                <button onclick="closeAddProductForUser()" style="background:#e74c3c;">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let currentUserId = null;
+        let userRole = null;
+        let allProducts = [];
+        let selectedSeller = null;
+        let selectedUserForProduct = null;
+
+        async function loadUser() {
+            const res = await fetch('/api/user');
+            const user = await res.json();
+            currentUserId = user.id;
+            userRole = user.role;
+            
+            if (userRole === 'seller') {
+                document.getElementById('navbar-title').textContent = user.username;
+                document.getElementById('section-title').textContent = 'Manage Products';
+                document.getElementById('request-btn').style.display = 'inline-block';
+                document.getElementById('add-btn').style.display = 'none';
+                document.getElementById('stock-title').textContent = 'My Products';
+            } else {
+                document.getElementById('add-section').style.display = 'none';
+                document.getElementById('requests-section').style.display = 'block';
+                document.getElementById('users-section').style.display = 'block';
+                document.getElementById('stats-section').style.display = 'block';
+            }
+        }
+
+        async function loadProducts() {
+            const res = await fetch('/api/products');
+            allProducts = await res.json();
+            displayProducts();
+        }
+
+        function filterBySeller(seller) {
+            selectedSeller = seller;
+            if (seller) {
+                document.getElementById('stock-title').innerHTML = `Stock Overview - <a href="#" onclick="filterBySeller(null); return false;" style="color:#667eea;">All Locations</a> / ${seller}`;
+            } else {
+                document.getElementById('stock-title').textContent = 'Stock Overview - All Locations';
+            }
+            displayProducts();
+        }
+
+        function displayProducts() {
+            let products = selectedSeller ? allProducts.filter(p => p.owner_name === selectedSeller) : allProducts;
+            
+            let html = '<table><thead><tr>';
+            if (userRole === 'manager') {
+                html += '<th>Owner</th><th>Location</th><th>Product</th><th>Type</th><th>Quantity</th><th>Actions</th>';
+            } else {
+                html += '<th>Product</th><th>Type</th><th>Quantity</th><th>Actions</th>';
+            }
+            html += '</tr></thead><tbody>';
+            
+            products.forEach(p => {
+                const isOwner = p.user_id === currentUserId;
+                html += `<tr>`;
+                if (userRole === 'manager') {
+                    html += `<td><span class="location-badge clickable-seller" onclick="filterBySeller('${p.owner_name}')">${p.owner_name}</span></td>
+                             <td><span class="location-badge">${p.workplace}</span></td>`;
+                }
+                html += `
+                    <td>${p.name}</td>
+                    <td>${p.type}</td>
+                    <td><span class="quantity-badge ${p.quantity < 10 ? 'low-stock' : ''}">${p.quantity}</span></td>
+                    <td>
+                        ${isOwner && userRole === 'manager' ? `
+                        <input type="number" id="qty-${p.id}" min="1" max="${p.quantity}" value="1" class="purchase-input">
+                        <button onclick="purchase(${p.id})" class="btn-purchase">Sell</button>
+                        <button onclick="deleteProduct(${p.id})" class="btn-delete">Delete</button>
+                        ` : (isOwner && userRole === 'seller' ? `
+                        <input type="number" id="qty-${p.id}" min="1" max="${p.quantity}" value="1" class="purchase-input">
+                        <button onclick="purchase(${p.id})" class="btn-purchase">Sell</button>
+                        ` : '-')}
+                    </td>
+                </tr>`;
+            });
+            
+            html += '</tbody></table>';
+            document.getElementById('stock-table').innerHTML = html;
+            
+            const totalQuantity = products.reduce((sum, p) => sum + p.quantity, 0);
+            document.getElementById('total-summary').innerHTML = `<span style="color:#667eea;">Total Products:</span> ${totalQuantity} units`;
+        }
+
+        async function addProduct() {
+            const name = document.getElementById('product-name').value;
+            const type = document.getElementById('product-type').value;
+            const quantity = parseInt(document.getElementById('product-quantity').value);
+            
+            if (!name || !type || !quantity) {
+                alert('Please fill all fields');
+                return;
+            }
+            
+            await fetch('/api/products', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({name, type, quantity})
+            });
+            
+            document.getElementById('product-name').value = '';
+            document.getElementById('product-type').value = '';
+            document.getElementById('product-quantity').value = '';
+            loadProducts();
+        }
+
+        async function requestProduct() {
+            const name = document.getElementById('product-name').value;
+            const type = document.getElementById('product-type').value;
+            const quantity = parseInt(document.getElementById('product-quantity').value);
+            
+            if (!name || !type || !quantity) {
+                alert('Please fill all fields');
+                return;
+            }
+            
+            await fetch('/api/requests', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({name, type, quantity})
+            });
+            
+            alert('Request sent to manager');
+            document.getElementById('product-name').value = '';
+            document.getElementById('product-type').value = '';
+            document.getElementById('product-quantity').value = '';
+        }
+
+        async function purchase(id) {
+            const quantity = parseInt(document.getElementById(`qty-${id}`).value);
+            
+            const res = await fetch(`/api/products/${id}/purchase`, {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({quantity})
+            });
+            
+            if (res.ok) {
+                loadProducts();
+            } else {
+                alert('Insufficient stock');
+            }
+        }
+
+        async function deleteProduct(id) {
+            if (!confirm('Delete this product?')) return;
+            
+            await fetch(`/api/products/${id}`, {method: 'DELETE'});
+            loadProducts();
+        }
+
+        async function loadRequests() {
+            const res = await fetch('/api/requests');
+            const requests = await res.json();
+            
+            if (requests.length === 0) {
+                document.getElementById('requests-table').innerHTML = '<p>No pending requests</p>';
+                return;
+            }
+            
+            let html = '<table><thead><tr><th>Seller</th><th>Product</th><th>Type</th><th>Quantity</th><th>Location</th><th>Actions</th></tr></thead><tbody>';
+            
+            requests.forEach(r => {
+                if (r.status === 'pending') {
+                    html += `<tr>
+                        <td>${r.seller_name}</td>
+                        <td>${r.product_name}</td>
+                        <td>${r.product_type}</td>
+                        <td>${r.quantity}</td>
+                        <td><span class="location-badge">${r.workplace}</span></td>
+                        <td>
+                            <button onclick="approveRequest(${r.id})" class="btn-purchase">Approve</button>
+                            <button onclick="rejectRequest(${r.id})" class="btn-delete">Reject</button>
+                        </td>
+                    </tr>`;
+                }
+            });
+            
+            html += '</tbody></table>';
+            document.getElementById('requests-table').innerHTML = html;
+        }
+
+        async function approveRequest(id) {
+            await fetch(`/api/requests/${id}/approve`, {method: 'POST'});
+            loadRequests();
+            loadProducts();
+        }
+
+        async function rejectRequest(id) {
+            await fetch(`/api/requests/${id}/reject`, {method: 'POST'});
+            loadRequests();
+        }
+
+        async function loadUsers() {
+            const res = await fetch('/api/users');
+            const users = await res.json();
+            
+            let html = '<table><thead><tr><th>Username</th><th>Role</th><th>Workplace</th><th>Actions</th></tr></thead><tbody>';
+            
+            users.forEach(u => {
+                html += `<tr>
+                    <td><a href="#" onclick="openAddProductForUser(${u.id}, '${u.username}'); return false;" style="color:#667eea;text-decoration:underline;font-weight:600;">${u.username}</a></td>
+                    <td><span class="location-badge" style="background:${u.role === 'manager' ? '#e74c3c' : '#667eea'};">${u.role}</span></td>
+                    <td>${u.workplace}</td>
+                    <td>
+                        ${u.id !== currentUserId ? `<button onclick="deleteUser(${u.id})" class="btn-delete">Delete</button>` : '-'}
+                    </td>
+                </tr>`;
+            });
+            
+            html += '</tbody></table>';
+            document.getElementById('users-table').innerHTML = html;
+        }
+
+        async function deleteUser(id) {
+            if (!confirm('Delete this user? All their products will also be deleted.')) return;
+            
+            await fetch(`/api/users/${id}`, {method: 'DELETE'});
+            loadUsers();
+            loadProducts();
+        }
+
+        function openAddProductForUser(userId, username) {
+            selectedUserForProduct = userId;
+            document.getElementById('add-product-title').textContent = `Add Product for ${username}`;
+            document.getElementById('add-product-for-user').style.display = 'block';
+            document.getElementById('user-product-name').value = '';
+            document.getElementById('user-product-type').value = '';
+            document.getElementById('user-product-quantity').value = '';
+        }
+
+        function closeAddProductForUser() {
+            selectedUserForProduct = null;
+            document.getElementById('add-product-for-user').style.display = 'none';
+        }
+
+        async function addProductForUser() {
+            const name = document.getElementById('user-product-name').value;
+            const type = document.getElementById('user-product-type').value;
+            const quantity = parseInt(document.getElementById('user-product-quantity').value);
+            
+            if (!name || !type || !quantity) {
+                alert('Please fill all fields');
+                return;
+            }
+            
+            await fetch('/api/products/add-for-user', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({user_id: selectedUserForProduct, name, type, quantity})
+            });
+            
+            closeAddProductForUser();
+            loadProducts();
+        }
+
+        async function loadStatistics() {
+            try {
+                const res = await fetch('/api/statistics');
+                if (!res.ok) {
+                    console.error('Statistics API error:', res.status);
+                    return;
+                }
+                const stats = await res.json();
+                
+                document.getElementById('stat-total-products').textContent = stats.total_products;
+                document.getElementById('stat-total-sellers').textContent = stats.total_sellers;
+                document.getElementById('stat-low-stock').textContent = stats.low_stock_items;
+                document.getElementById('stat-pending-requests').textContent = stats.pending_requests;
+                
+                if (stats.top_sellers.length === 0) {
+                    document.getElementById('top-sellers-table').innerHTML = '<p style="text-align:center;color:#999;padding:20px;">No sellers registered yet</p>';
+                    return;
+                }
+                
+                let html = '<table><thead><tr><th>Rank</th><th>Seller</th><th>Total Sales</th><th>Current Stock</th><th>Products</th></tr></thead><tbody>';
+                stats.top_sellers.forEach((s, i) => {
+                    const rankColor = i === 0 ? '#f39c12' : i === 1 ? '#95a5a6' : i === 2 ? '#cd7f32' : '#667eea';
+                    html += `<tr>
+                        <td><span style="font-weight:bold;color:${rankColor};font-size:18px;">#${i + 1}</span></td>
+                        <td><span class="location-badge">${s.seller}</span></td>
+                        <td><span class="quantity-badge" style="background:#27ae60;">${s.total_sales} sold</span></td>
+                        <td><span class="quantity-badge">${s.current_stock}</span></td>
+                        <td>${s.product_count}</td>
+                    </tr>`;
+                });
+                html += '</tbody></table>';
+                document.getElementById('top-sellers-table').innerHTML = html;
+            } catch (error) {
+                console.error('Error loading statistics:', error);
+            }
+        }
+
+        loadUser().then(() => {
+            loadProducts();
+            if (userRole === 'manager') {
+                loadRequests();
+                loadUsers();
+                loadStatistics();
+                setInterval(() => {
+                    loadProducts();
+                    loadRequests();
+                    loadUsers();
+                    loadStatistics();
+                }, 3000);
+            } else {
+                setInterval(loadProducts, 3000);
+            }
+        });
+    </script>
+</body>
+</html>
