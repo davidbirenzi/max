@@ -112,7 +112,8 @@ def dashboard():
 @app.route('/api/user', methods=['GET'])
 @login_required
 def get_user():
-    return jsonify({'id': session['user_id'], 'username': session['username'], 'workplace': session['workplace'], 'is_admin': session['is_admin']})
+    role = 'manager' if session['is_admin'] else 'seller'
+    return jsonify({'id': session['user_id'], 'username': session['username'], 'workplace': session['workplace'], 'is_admin': session['is_admin'], 'role': role})
 
 @app.route('/api/products', methods=['GET'])
 @login_required
@@ -241,7 +242,12 @@ def get_users():
     conn = get_db()
     users = conn.execute('SELECT id, username, is_admin, workplace FROM users ORDER BY is_admin DESC, username').fetchall()
     conn.close()
-    return jsonify([dict(u) for u in users])
+    out = []
+    for u in users:
+        d = dict(u)
+        d['role'] = 'manager' if d['is_admin'] else 'seller'
+        out.append(d)
+    return jsonify(out)
 
 @app.route('/api/users/<int:id>', methods=['DELETE'])
 @login_required
