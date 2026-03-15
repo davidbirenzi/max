@@ -3,81 +3,81 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Stock Manager - Dashboard</title>
+    <title>Stock Manager — Dashboard</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
-<body>
-    <div class="navbar">
-        <h1 id="navbar-title">Stock Manager</h1>
-        <div>
-            <span id="user-info"></span>
+<body class="dashboard-page">
+    <header class="navbar">
+        <h1 class="brand" id="navbar-title">Stock Manager</h1>
+        <div class="nav-right">
+            <span class="user-badge" id="user-info"></span>
             <a href="/logout" class="logout-btn">Logout</a>
         </div>
-    </div>
-    
-    <div class="container">
-        <div class="stock-section" id="stats-section" style="display:none;">
+    </header>
+
+    <main class="container">
+        <section class="card" id="stats-section" style="display:none;">
             <h2>Statistics Overview</h2>
-            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:15px;margin-bottom:20px;">
-                <div style="background:#667eea;color:white;padding:20px;border-radius:8px;text-align:center;">
-                    <div style="font-size:32px;font-weight:bold;" id="stat-total-products">0</div>
-                    <div style="font-size:14px;margin-top:5px;">Total Products</div>
+            <div class="stat-grid">
+                <div class="stat-card primary">
+                    <div class="value" id="stat-total-products">0</div>
+                    <div class="label">Total Products</div>
                 </div>
-                <div style="background:#27ae60;color:white;padding:20px;border-radius:8px;text-align:center;">
-                    <div style="font-size:32px;font-weight:bold;" id="stat-total-sellers">0</div>
-                    <div style="font-size:14px;margin-top:5px;">Total Sellers</div>
+                <div class="stat-card success">
+                    <div class="value" id="stat-total-sellers">0</div>
+                    <div class="label">Total Sellers</div>
                 </div>
-                <div style="background:#f39c12;color:white;padding:20px;border-radius:8px;text-align:center;">
-                    <div style="font-size:32px;font-weight:bold;" id="stat-low-stock">0</div>
-                    <div style="font-size:14px;margin-top:5px;">Low Stock Items</div>
+                <div class="stat-card warning">
+                    <div class="value" id="stat-low-stock">0</div>
+                    <div class="label">Low Stock Items</div>
                 </div>
-                <div style="background:#e74c3c;color:white;padding:20px;border-radius:8px;text-align:center;">
-                    <div style="font-size:32px;font-weight:bold;" id="stat-pending-requests">0</div>
-                    <div style="font-size:14px;margin-top:5px;">Pending Requests</div>
+                <div class="stat-card danger">
+                    <div class="value" id="stat-pending-requests">0</div>
+                    <div class="label">Pending Requests</div>
                 </div>
             </div>
-            <h3 style="margin-top:20px;margin-bottom:10px;">Seller Performance Rankings</h3>
+            <h3>Seller Performance Rankings</h3>
             <div id="top-sellers-table"></div>
-        </div>
+        </section>
 
-        <div class="add-product-section" id="add-section">
+        <section class="card" id="add-section">
             <h2 id="section-title">Add New Product</h2>
             <div class="form-row">
-                <input type="text" id="product-name" placeholder="Product Name">
-                <input type="text" id="product-type" placeholder="Product Type">
+                <input type="text" id="product-name" placeholder="Product name">
+                <input type="text" id="product-type" placeholder="Type">
                 <input type="number" id="product-quantity" placeholder="Quantity" min="0">
-                <button onclick="addProduct()" id="add-btn">Add Product</button>
-                <button onclick="requestProduct()" id="request-btn" style="display:none;background:#f39c12;">Request from Manager</button>
+                <button type="button" class="btn btn-primary" onclick="addProduct()" id="add-btn">Add Product</button>
+                <button type="button" class="btn btn-warning" onclick="requestProduct()" id="request-btn" style="display:none;">Request from Manager</button>
             </div>
-        </div>
+        </section>
 
-        <div class="stock-section">
-            <h2 id="stock-title">Stock Overview - All Locations</h2>
-            <div id="stock-table"></div>
-            <div id="total-summary" style="margin-top:20px;padding:15px;background:#f8f9fa;border-radius:8px;font-weight:600;font-size:16px;"></div>
-        </div>
+        <section class="card">
+            <h2 id="stock-title">Stock Overview — All Locations</h2>
+            <div class="table-wrap" id="stock-table"></div>
+            <div id="total-summary" class="summary-bar"></div>
+        </section>
 
-        <div class="stock-section" id="requests-section" style="display:none;">
+        <section class="card" id="requests-section" style="display:none;">
             <h2>Product Requests</h2>
             <div id="requests-table"></div>
-        </div>
+        </section>
 
-        <div class="stock-section" id="users-section" style="display:none;">
+        <section class="card" id="users-section" style="display:none;">
             <h2>Manage Users</h2>
             <div id="users-table"></div>
-        </div>
+        </section>
 
-        <div class="stock-section" id="add-product-for-user" style="display:none;">
+        <section class="card" id="add-product-for-user" style="display:none;">
             <h2 id="add-product-title">Add Product for User</h2>
             <div class="form-row">
-                <input type="text" id="user-product-name" placeholder="Product Name">
-                <input type="text" id="user-product-type" placeholder="Product Type">
+                <input type="text" id="user-product-name" placeholder="Product name">
+                <input type="text" id="user-product-type" placeholder="Type">
                 <input type="number" id="user-product-quantity" placeholder="Quantity" min="0">
-                <button onclick="addProductForUser()" style="background:#27ae60;">Add Product</button>
-                <button onclick="closeAddProductForUser()" style="background:#e74c3c;">Cancel</button>
+                <button type="button" class="btn btn-success" onclick="addProductForUser()">Add Product</button>
+                <button type="button" class="btn btn-danger" onclick="closeAddProductForUser()">Cancel</button>
             </div>
-        </div>
-    </div>
+        </section>
+    </main>
 
     <script>
         let currentUserId = null;
@@ -92,6 +92,7 @@
             currentUserId = user.id;
             userRole = user.role;
             
+            document.getElementById('user-info').textContent = user.username + (user.workplace ? ' · ' + user.workplace : '');
             if (userRole === 'seller') {
                 document.getElementById('navbar-title').textContent = user.username;
                 document.getElementById('section-title').textContent = 'Manage Products';
@@ -115,9 +116,9 @@
         function filterBySeller(seller) {
             selectedSeller = seller;
             if (seller) {
-                document.getElementById('stock-title').innerHTML = `Stock Overview - <a href="#" onclick="filterBySeller(null); return false;" style="color:#667eea;">All Locations</a> / ${seller}`;
+                document.getElementById('stock-title').innerHTML = `Stock Overview — <a href="#" class="table-link" onclick="filterBySeller(null); return false;">All Locations</a> / ${seller}`;
             } else {
-                document.getElementById('stock-title').textContent = 'Stock Overview - All Locations';
+                document.getElementById('stock-title').textContent = 'Stock Overview — All Locations';
             }
             displayProducts();
         }
@@ -147,12 +148,12 @@
                     <td>
                         ${isOwner && userRole === 'manager' ? `
                         <input type="number" id="qty-${p.id}" min="1" max="${p.quantity}" value="1" class="purchase-input">
-                        <button onclick="purchase(${p.id})" class="btn-purchase">Sell</button>
-                        <button onclick="deleteProduct(${p.id})" class="btn-delete">Delete</button>
+                        <button type="button" class="btn btn-success" onclick="purchase(${p.id})">Sell</button>
+                        <button type="button" class="btn btn-danger" onclick="deleteProduct(${p.id})">Delete</button>
                         ` : (isOwner && userRole === 'seller' ? `
                         <input type="number" id="qty-${p.id}" min="1" max="${p.quantity}" value="1" class="purchase-input">
-                        <button onclick="purchase(${p.id})" class="btn-purchase">Sell</button>
-                        ` : '-')}
+                        <button type="button" class="btn btn-success" onclick="purchase(${p.id})">Sell</button>
+                        ` : '—')}
                     </td>
                 </tr>`;
             });
@@ -161,7 +162,7 @@
             document.getElementById('stock-table').innerHTML = html;
             
             const totalQuantity = products.reduce((sum, p) => sum + p.quantity, 0);
-            document.getElementById('total-summary').innerHTML = `<span style="color:#667eea;">Total Products:</span> ${totalQuantity} units`;
+            document.getElementById('total-summary').innerHTML = `<strong>Total products:</strong> ${totalQuantity} units`;
         }
 
         async function addProduct() {
@@ -236,11 +237,11 @@
             const requests = await res.json();
             
             if (requests.length === 0) {
-                document.getElementById('requests-table').innerHTML = '<p>No pending requests</p>';
+                document.getElementById('requests-table').innerHTML = '<p class="empty-state">No pending requests</p>';
                 return;
             }
             
-            let html = '<table><thead><tr><th>Seller</th><th>Product</th><th>Type</th><th>Quantity</th><th>Location</th><th>Actions</th></tr></thead><tbody>';
+            let html = '<div class="table-wrap"><table><thead><tr><th>Seller</th><th>Product</th><th>Type</th><th>Quantity</th><th>Location</th><th>Actions</th></tr></thead><tbody>';
             
             requests.forEach(r => {
                 if (r.status === 'pending') {
@@ -251,14 +252,14 @@
                         <td>${r.quantity}</td>
                         <td><span class="location-badge">${r.workplace}</span></td>
                         <td>
-                            <button onclick="approveRequest(${r.id})" class="btn-purchase">Approve</button>
-                            <button onclick="rejectRequest(${r.id})" class="btn-delete">Reject</button>
+                            <button type="button" class="btn btn-success" onclick="approveRequest(${r.id})">Approve</button>
+                            <button type="button" class="btn btn-danger" onclick="rejectRequest(${r.id})">Reject</button>
                         </td>
                     </tr>`;
                 }
             });
             
-            html += '</tbody></table>';
+            html += '</tbody></table></div>';
             document.getElementById('requests-table').innerHTML = html;
         }
 
@@ -277,20 +278,21 @@
             const res = await fetch('/api/users');
             const users = await res.json();
             
-            let html = '<table><thead><tr><th>Username</th><th>Role</th><th>Workplace</th><th>Actions</th></tr></thead><tbody>';
+            let html = '<div class="table-wrap"><table><thead><tr><th>Username</th><th>Role</th><th>Workplace</th><th>Actions</th></tr></thead><tbody>';
             
             users.forEach(u => {
+                const roleClass = u.role === 'manager' ? 'badge-danger' : 'badge-primary';
                 html += `<tr>
-                    <td><a href="#" onclick="openAddProductForUser(${u.id}, '${u.username}'); return false;" style="color:#667eea;text-decoration:underline;font-weight:600;">${u.username}</a></td>
-                    <td><span class="location-badge" style="background:${u.role === 'manager' ? '#e74c3c' : '#667eea'};">${u.role}</span></td>
+                    <td><a href="#" class="table-link" onclick="openAddProductForUser(${u.id}, '${u.username.replace(/'/g, "\\'")}'); return false;">${u.username}</a></td>
+                    <td><span class="badge ${roleClass}">${u.role}</span></td>
                     <td>${u.workplace}</td>
                     <td>
-                        ${u.id !== currentUserId ? `<button onclick="deleteUser(${u.id})" class="btn-delete">Delete</button>` : '-'}
+                        ${u.id !== currentUserId ? `<button type="button" class="btn btn-danger" onclick="deleteUser(${u.id})">Delete</button>` : '—'}
                     </td>
                 </tr>`;
             });
             
-            html += '</tbody></table>';
+            html += '</tbody></table></div>';
             document.getElementById('users-table').innerHTML = html;
         }
 
@@ -351,22 +353,22 @@
                 document.getElementById('stat-pending-requests').textContent = stats.pending_requests;
                 
                 if (stats.top_sellers.length === 0) {
-                    document.getElementById('top-sellers-table').innerHTML = '<p style="text-align:center;color:#999;padding:20px;">No sellers registered yet</p>';
+                    document.getElementById('top-sellers-table').innerHTML = '<p class="empty-state">No sellers registered yet</p>';
                     return;
                 }
                 
-                let html = '<table><thead><tr><th>Rank</th><th>Seller</th><th>Total Sales</th><th>Current Stock</th><th>Products</th></tr></thead><tbody>';
+                let html = '<div class="table-wrap"><table><thead><tr><th>Rank</th><th>Seller</th><th>Total Sales</th><th>Current Stock</th><th>Products</th></tr></thead><tbody>';
                 stats.top_sellers.forEach((s, i) => {
-                    const rankColor = i === 0 ? '#f39c12' : i === 1 ? '#95a5a6' : i === 2 ? '#cd7f32' : '#667eea';
+                    const rankClass = i === 0 ? 'badge-warning' : i === 1 ? 'badge-muted' : i === 2 ? 'badge-warning' : 'badge-primary';
                     html += `<tr>
-                        <td><span style="font-weight:bold;color:${rankColor};font-size:18px;">#${i + 1}</span></td>
+                        <td><span class="badge ${rankClass}">#${i + 1}</span></td>
                         <td><span class="location-badge">${s.seller}</span></td>
-                        <td><span class="quantity-badge" style="background:#27ae60;">${s.total_sales} sold</span></td>
+                        <td><span class="quantity-badge">${s.total_sales} sold</span></td>
                         <td><span class="quantity-badge">${s.current_stock}</span></td>
                         <td>${s.product_count}</td>
                     </tr>`;
                 });
-                html += '</tbody></table>';
+                html += '</tbody></table></div>';
                 document.getElementById('top-sellers-table').innerHTML = html;
             } catch (error) {
                 console.error('Error loading statistics:', error);

@@ -3,78 +3,114 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Stock Manager - Login</title>
+    <title>Stock Manager — Sign in</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
-<body>
-    <div class="container">
-        <div class="auth-box">
+<body class="auth-page">
+    <div class="auth-card">
+        <div class="brand">
             <h1>Stock Manager</h1>
-            <div id="login-form">
-                <h2>Login</h2>
-                <input type="text" id="login-username" placeholder="Username" required>
-                <input type="password" id="login-password" placeholder="Password" required>
-                <button onclick="login()">Login</button>
-                <p class="toggle-link">Don't have an account? <a href="#" onclick="showRegister()">Register</a></p>
-            </div>
-            <div id="register-form" style="display:none;">
-                <h2>Register as Seller</h2>
-                <input type="text" id="reg-username" placeholder="Username" required>
-                <input type="password" id="reg-password" placeholder="Password" required>
-                <input type="text" id="reg-workplace" placeholder="Workplace Location" required>
-                <button onclick="register()">Register</button>
-                <p class="toggle-link">Already have an account? <a href="#" onclick="showLogin()">Login</a></p>
-            </div>
-            <div id="message"></div>
+            <span>Inventory & sales at a glance</span>
         </div>
+
+        <div class="auth-tabs">
+            <button type="button" class="auth-tab active" id="tab-login" onclick="showLogin()">Login</button>
+            <button type="button" class="auth-tab" id="tab-register" onclick="showRegister()">Register as Seller</button>
+        </div>
+
+        <div id="login-form" class="auth-form active">
+            <form onsubmit="login(); return false;">
+                <label for="login-username">Username</label>
+                <input type="text" id="login-username" placeholder="Enter your username" required autocomplete="username">
+                <label for="login-password">Password</label>
+                <input type="password" id="login-password" placeholder="Enter your password" required autocomplete="current-password">
+                <button type="submit" class="btn-submit">Sign in</button>
+            </form>
+        </div>
+
+        <div id="register-form" class="auth-form">
+            <form onsubmit="register(); return false;">
+                <label for="reg-username">Username</label>
+                <input type="text" id="reg-username" placeholder="Choose a username" required autocomplete="username">
+                <label for="reg-password">Password</label>
+                <input type="password" id="reg-password" placeholder="Choose a password" required autocomplete="new-password">
+                <label for="reg-workplace">Workplace / Location</label>
+                <input type="text" id="reg-workplace" placeholder="e.g. Store A, Warehouse North" required>
+                <button type="submit" class="btn-submit">Create account</button>
+            </form>
+        </div>
+
+        <div id="message" class="auth-message" role="alert"></div>
+
+        <p class="auth-footer" id="auth-footer-login">
+            Don't have an account? <a href="#" onclick="showRegister(); return false;">Register as seller</a>
+        </p>
+        <p class="auth-footer" id="auth-footer-register" style="display:none;">
+            Already have an account? <a href="#" onclick="showLogin(); return false;">Sign in</a>
+        </p>
     </div>
+
     <script>
         function showRegister() {
-            document.getElementById('login-form').style.display = 'none';
-            document.getElementById('register-form').style.display = 'block';
-            document.getElementById('message').textContent = '';
+            document.getElementById('login-form').classList.remove('active');
+            document.getElementById('register-form').classList.add('active');
+            document.getElementById('tab-login').classList.remove('active');
+            document.getElementById('tab-register').classList.add('active');
+            document.getElementById('auth-footer-login').style.display = 'none';
+            document.getElementById('auth-footer-register').style.display = 'block';
+            setMessage('');
         }
 
         function showLogin() {
-            document.getElementById('register-form').style.display = 'none';
-            document.getElementById('login-form').style.display = 'block';
-            document.getElementById('message').textContent = '';
+            document.getElementById('register-form').classList.remove('active');
+            document.getElementById('login-form').classList.add('active');
+            document.getElementById('tab-register').classList.remove('active');
+            document.getElementById('tab-login').classList.add('active');
+            document.getElementById('auth-footer-register').style.display = 'none';
+            document.getElementById('auth-footer-login').style.display = 'block';
+            setMessage('');
+        }
+
+        function setMessage(text, type) {
+            const el = document.getElementById('message');
+            el.textContent = text;
+            el.className = 'auth-message' + (type ? ' ' + type : '');
         }
 
         async function login() {
-            const username = document.getElementById('login-username').value;
+            const username = document.getElementById('login-username').value.trim();
             const password = document.getElementById('login-password').value;
-            
+
             const res = await fetch('/login', {
                 method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({username, password})
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ username, password })
             });
-            
+
             if (res.ok) {
                 window.location.href = '/dashboard';
             } else {
-                document.getElementById('message').textContent = 'Invalid credentials';
+                setMessage('Invalid username or password.', 'error');
             }
         }
 
         async function register() {
-            const username = document.getElementById('reg-username').value;
+            const username = document.getElementById('reg-username').value.trim();
             const password = document.getElementById('reg-password').value;
-            const workplace = document.getElementById('reg-workplace').value;
-            
+            const workplace = document.getElementById('reg-workplace').value.trim();
+
             const res = await fetch('/register', {
                 method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({username, password, workplace})
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ username, password, workplace })
             });
-            
+
             const data = await res.json();
             if (data.success) {
-                document.getElementById('message').textContent = 'Registration successful! Please login.';
+                setMessage('Account created. Please sign in.', 'success');
                 showLogin();
             } else {
-                document.getElementById('message').textContent = data.message;
+                setMessage(data.message || 'Registration failed.', 'error');
             }
         }
     </script>
