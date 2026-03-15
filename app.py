@@ -1,13 +1,16 @@
 from flask import Flask, render_template, request, jsonify, session, redirect, url_for
 from functools import wraps
 import sqlite3
+import os
 from datetime import datetime
 
 app = Flask(__name__)
 app.secret_key = 'your-secret-key-change-in-production'
 
+DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'stock.db')
+
 def get_db():
-    conn = sqlite3.connect('stock.db')
+    conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
     return conn
 
@@ -18,7 +21,7 @@ def init_db():
         username TEXT UNIQUE NOT NULL,
         password TEXT NOT NULL,
         workplace TEXT NOT NULL,
-        role TEXT DEFAULT 'manager'
+        is_admin INTEGER DEFAULT 0
     )''')
     conn.execute('''CREATE TABLE IF NOT EXISTS products (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -47,13 +50,6 @@ def init_db():
         quantity INTEGER NOT NULL,
         sale_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     )''')
-    
-    # Create default manager account if it doesn't exist
-    manager_exists = conn.execute('SELECT COUNT(*) as count FROM users WHERE role = "manager"').fetchone()['count']
-    if manager_exists == 0:
-        conn.execute('INSERT INTO users (username, password, workplace, role) VALUES (?, ?, ?, ?)',
-                    ('admin', 'admin123', 'Head Office', 'manager'))
-    
     conn.commit()
     conn.close()
 
@@ -84,7 +80,7 @@ def login():
             session['user_id'] = user['id']
             session['username'] = user['username']
             session['workplace'] = user['workplace']
-            session['role'] = user['role']
+            session['is_admin'] = bool(user['is_admin'])
             return jsonify({'success': True})
         return jsonify({'success': False, 'message': 'Invalid credentials'}), 401
     return render_template('login.html')
@@ -94,9 +90,8 @@ def register():
     data = request.json
     conn = get_db()
     try:
-        # Force all registrations to be sellers only
-        conn.execute('INSERT INTO users (username, password, workplace, role) VALUES (?, ?, ?, ?)',
-                    (data['username'], data['password'], data['workplace'], 'seller'))
+        conn.execute('INSERT INTO users (username, password, workplace, is_admin) VALUES (?, ?, ?, 0)',
+                    (data['username'], data['password'], data['workplace']))
         conn.commit()
         conn.close()
         return jsonify({'success': True})
@@ -117,13 +112,13 @@ def dashboard():
 @app.route('/api/user', methods=['GET'])
 @login_required
 def get_user():
-    return jsonify({'id': session['user_id'], 'username': session['username'], 'workplace': session['workplace'], 'role': session['role']})
+    return jsonify({'id': session['user_id'], 'username': session['username'], 'workplace': session['workplace'], 'is_admin': session['is_admin']})
 
 @app.route('/api/products', methods=['GET'])
 @login_required
 def get_products():
     conn = get_db()
-    if session['role'] == 'seller':
+    if not session['is_admin']:
         products = conn.execute('SELECT * FROM products WHERE user_id = ? ORDER BY name', (session['user_id'],)).fetchall()
     else:
         products = conn.execute('''SELECT p.*, u.username as owner_name 
@@ -147,7 +142,7 @@ def add_product():
 @app.route('/api/products/add-for-user', methods=['POST'])
 @login_required
 def add_product_for_user():
-    if session['role'] != 'manager':
+    if not session['is_admin']:
         return jsonify({'success': False}), 403
     
     data = request.json
@@ -191,7 +186,7 @@ def delete_product(id):
 @login_required
 def get_requests():
     conn = get_db()
-    if session['role'] == 'manager':
+    if session['is_admin']:
         requests = conn.execute('SELECT * FROM requests WHERE status = "pending" ORDER BY created_at DESC').fetchall()
     else:
         requests = conn.execute('SELECT * FROM requests WHERE seller_id = ? ORDER BY created_at DESC').fetchall()
@@ -212,7 +207,7 @@ def create_request():
 @app.route('/api/requests/<int:id>/approve', methods=['POST'])
 @login_required
 def approve_request(id):
-    if session['role'] != 'manager':
+    if not session['is_admin']:
         return jsonify({'success': False}), 403
     
     conn = get_db()
@@ -228,7 +223,7 @@ def approve_request(id):
 @app.route('/api/requests/<int:id>/reject', methods=['POST'])
 @login_required
 def reject_request(id):
-    if session['role'] != 'manager':
+    if not session['is_admin']:
         return jsonify({'success': False}), 403
     
     conn = get_db()
@@ -240,18 +235,18 @@ def reject_request(id):
 @app.route('/api/users', methods=['GET'])
 @login_required
 def get_users():
-    if session['role'] != 'manager':
+    if not session['is_admin']:
         return jsonify({'success': False}), 403
     
     conn = get_db()
-    users = conn.execute('SELECT id, username, role, workplace FROM users ORDER BY role, username').fetchall()
+    users = conn.execute('SELECT id, username, is_admin, workplace FROM users ORDER BY is_admin DESC, username').fetchall()
     conn.close()
     return jsonify([dict(u) for u in users])
 
 @app.route('/api/users/<int:id>', methods=['DELETE'])
 @login_required
 def delete_user(id):
-    if session['role'] != 'manager':
+    if not session['is_admin']:
         return jsonify({'success': False}), 403
     
     conn = get_db()
@@ -264,13 +259,13 @@ def delete_user(id):
 @app.route('/api/statistics', methods=['GET'])
 @login_required
 def get_statistics():
-    if session['role'] != 'manager':
+    if not session['is_admin']:
         return jsonify({'success': False}), 403
     
     conn = get_db()
     
     total_products = conn.execute('SELECT SUM(quantity) as total FROM products').fetchone()['total'] or 0
-    total_sellers = conn.execute('SELECT COUNT(*) as count FROM users WHERE role = "seller"').fetchone()['count']
+    total_sellers = conn.execute('SELECT COUNT(*) as count FROM users WHERE is_admin = 0').fetchone()['count']
     low_stock_items = conn.execute('SELECT COUNT(*) as count FROM products WHERE quantity < 10').fetchone()['count']
     pending_requests = conn.execute('SELECT COUNT(*) as count FROM requests WHERE status = "pending"').fetchone()['count']
     
@@ -281,7 +276,7 @@ def get_statistics():
                                    FROM users u
                                    LEFT JOIN products p ON u.id = p.user_id
                                    LEFT JOIN sales s ON u.id = s.seller_id
-                                   WHERE u.role = "seller"
+                                   WHERE u.is_admin = 0
                                    GROUP BY u.id, u.username
                                    ORDER BY total_sales DESC, u.username ASC''').fetchall()
     
@@ -295,6 +290,35 @@ def get_statistics():
         'top_sellers': [dict(s) for s in top_sellers]
     })
 
+@app.route('/setup-admin', methods=['GET', 'POST'])
+def setup_admin():
+    conn = get_db()
+    admin_exists = conn.execute('SELECT COUNT(*) as count FROM users WHERE is_admin = 1').fetchone()['count']
+    if admin_exists:
+        conn.close()
+        return 'Admin already exists.', 403
+    if request.method == 'POST':
+        data = request.form
+        try:
+            conn.execute('INSERT INTO users (username, password, workplace, is_admin) VALUES (?, ?, ?, 1)',
+                        (data['username'], data['password'], data['workplace']))
+            conn.commit()
+            conn.close()
+            return 'Admin created successfully. Delete or disable this route now.'
+        except sqlite3.IntegrityError:
+            conn.close()
+            return 'Username already exists.', 400
+    conn.close()
+    return '''
+        <form method="post">
+            Username: <input name="username"><br>
+            Password: <input name="password" type="password"><br>
+            Workplace: <input name="workplace"><br>
+            <button type="submit">Create Admin</button>
+        </form>
+    '''
+
+init_db()
+
 if __name__ == '__main__':
-    init_db()
     app.run(host='0.0.0.0', port=5000)
