@@ -1,2 +1,6 @@
 .venv/
 venv/
+
+# Local SQLite (per machine / PythonAnywhere)
+stock.db
+*.db
