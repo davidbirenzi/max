@@ -451,6 +451,18 @@ table {
     font-size: 0.875rem;
 }
 
+.stock-table th.col-delete,
+.stock-table td.td-delete {
+    width: 1%;
+    white-space: nowrap;
+    vertical-align: middle;
+}
+
+.stock-table td.td-actions {
+    vertical-align: middle;
+    min-width: 280px;
+}
+
 thead {
     background: var(--color-surface-soft);
 }
@@ -598,6 +610,57 @@ tbody tr:last-child td {
 }
 
 .summary-bar strong { color: var(--color-primary); }
+
+.stock-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-sm) var(--space-md);
+    margin-bottom: var(--space-md);
+    padding: var(--space-md) var(--space-lg);
+    background: var(--color-surface-soft);
+    border-radius: var(--radius-md);
+    font-size: 0.875rem;
+    color: var(--color-text-muted);
+}
+
+.stock-toolbar-label {
+    margin-right: var(--space-sm);
+}
+
+.stock-toolbar-label strong {
+    color: var(--color-text);
+    font-weight: 600;
+}
+
+.btn-sm {
+    padding: 6px 12px;
+    font-size: 0.75rem;
+}
+
+.actions-cell {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-xs) var(--space-sm);
+    max-width: 420px;
+}
+
+.batch-sell-label {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--color-text-muted);
+    cursor: pointer;
+    user-select: none;
+    margin-right: var(--space-xs);
+}
+
+.batch-sell-label input {
+    cursor: pointer;
+}
 
 /* Empty state */
 .empty-state {

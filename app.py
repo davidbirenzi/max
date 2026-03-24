@@ -156,28 +156,122 @@ def add_product_for_user():
     conn.close()
     return jsonify({'success': True})
 
+def _can_manage_product(product_row):
+    if not product_row:
+        return False
+    if session['is_admin']:
+        return True
+    return product_row['user_id'] == session['user_id']
+
+
 @app.route('/api/products/<int:id>/purchase', methods=['POST'])
 @login_required
 def purchase_product(id):
-    data = request.json
-    qty = data['quantity']
+    data = request.json or {}
+    try:
+        qty = int(data['quantity'])
+    except (TypeError, ValueError, KeyError):
+        return jsonify({'success': False, 'message': 'Invalid quantity'}), 400
+    if qty <= 0:
+        return jsonify({'success': False, 'message': 'Invalid quantity'}), 400
     conn = get_db()
     product = conn.execute('SELECT quantity, user_id FROM products WHERE id = ?', (id,)).fetchone()
-    
-    if not product or product['quantity'] < qty:
+
+    if not product or not _can_manage_product(product):
+        conn.close()
+        return jsonify({'success': False, 'message': 'Not found or forbidden'}), 403
+
+    if product['quantity'] < qty:
         conn.close()
         return jsonify({'success': False, 'message': 'Insufficient stock'}), 400
-    
+
     conn.execute('UPDATE products SET quantity = quantity - ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?', (qty, id))
     conn.execute('INSERT INTO sales (product_id, seller_id, quantity) VALUES (?, ?, ?)', (id, product['user_id'], qty))
     conn.commit()
     conn.close()
     return jsonify({'success': True})
 
+
+@app.route('/api/products/batch-purchase', methods=['POST'])
+@login_required
+def batch_purchase():
+    raw = (request.json or {}).get('items') or []
+    items = []
+    for it in raw:
+        try:
+            pid = int(it['id'])
+            q = int(it['quantity'])
+            if q > 0:
+                items.append((pid, q))
+        except (TypeError, ValueError, KeyError):
+            return jsonify({'success': False, 'message': 'Invalid item payload'}), 400
+    if not items:
+        return jsonify({'success': False, 'message': 'No line items with quantity > 0'}), 400
+
+    merged = {}
+    for pid, q in items:
+        merged[pid] = merged.get(pid, 0) + q
+    items = list(merged.items())
+
+    conn = get_db()
+    updates = []
+    for pid, qty in items:
+        product = conn.execute('SELECT quantity, user_id FROM products WHERE id = ?', (pid,)).fetchone()
+        if not product or not _can_manage_product(product):
+            conn.close()
+            return jsonify({'success': False, 'message': 'Not found or forbidden'}), 403
+        if product['quantity'] < qty:
+            conn.close()
+            return jsonify({'success': False, 'message': 'Insufficient stock on one or more products'}), 400
+        updates.append((qty, pid, product['user_id']))
+
+    for qty, pid, seller_id in updates:
+        conn.execute(
+            'UPDATE products SET quantity = quantity - ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
+            (qty, pid),
+        )
+        conn.execute(
+            'INSERT INTO sales (product_id, seller_id, quantity) VALUES (?, ?, ?)',
+            (pid, seller_id, qty),
+        )
+    conn.commit()
+    conn.close()
+    return jsonify({'success': True})
+
+
+@app.route('/api/products/<int:id>/quantity', methods=['PATCH'])
+@login_required
+def set_product_quantity(id):
+    data = request.json or {}
+    try:
+        new_qty = int(data['quantity'])
+    except (TypeError, ValueError, KeyError):
+        return jsonify({'success': False, 'message': 'quantity required'}), 400
+    if new_qty < 0:
+        return jsonify({'success': False, 'message': 'Quantity cannot be negative'}), 400
+
+    conn = get_db()
+    product = conn.execute('SELECT user_id FROM products WHERE id = ?', (id,)).fetchone()
+    if not product or not _can_manage_product(product):
+        conn.close()
+        return jsonify({'success': False, 'message': 'Not found or forbidden'}), 403
+
+    conn.execute('UPDATE products SET quantity = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?', (new_qty, id))
+    conn.commit()
+    conn.close()
+    return jsonify({'success': True})
+
+
 @app.route('/api/products/<int:id>', methods=['DELETE'])
 @login_required
 def delete_product(id):
+    if not session['is_admin']:
+        return jsonify({'success': False, 'message': 'Only stock managers can delete products'}), 403
     conn = get_db()
+    product = conn.execute('SELECT id FROM products WHERE id = ?', (id,)).fetchone()
+    if not product:
+        conn.close()
+        return jsonify({'success': False, 'message': 'Not found'}), 404
     conn.execute('DELETE FROM products WHERE id = ?', (id,))
     conn.commit()
     conn.close()

@@ -53,6 +53,11 @@
 
         <section class="card">
             <h2 id="stock-title">Stock Overview — All Locations</h2>
+            <div class="stock-toolbar" id="stock-toolbar" style="display: none;">
+                <span class="stock-toolbar-label">Set quantity per row, tick <strong>Include</strong> for each product to sell together, then</span>
+                <button type="button" class="btn btn-primary btn-sm" onclick="batchSellSelected()">Record batch sale</button>
+                <button type="button" class="btn btn-ghost btn-sm" onclick="clearBatchSelection()">Clear all Include ticks</button>
+            </div>
             <div class="table-wrap" id="stock-table"></div>
             <div id="total-summary" class="summary-bar"></div>
         </section>
@@ -85,12 +90,14 @@
         let allProducts = [];
         let selectedSeller = null;
         let selectedUserForProduct = null;
+        /** Keeps checkbox + qty input across table redraws (auto-refresh / filter). */
+        let sellRowDraftById = {};
 
         async function loadUser() {
             const res = await fetch('/api/user');
             const user = await res.json();
             currentUserId = user.id;
-            userRole = user.role;
+            userRole = user.role || (user.is_admin ? 'manager' : 'seller');
             
             document.getElementById('user-info').textContent = user.username + (user.workplace ? ' · ' + user.workplace : '');
             if (userRole === 'seller') {
@@ -110,7 +117,51 @@
         async function loadProducts() {
             const res = await fetch('/api/products');
             allProducts = await res.json();
+            const ids = new Set(allProducts.map(p => p.id));
+            Object.keys(sellRowDraftById).forEach(k => {
+                if (!ids.has(Number(k))) delete sellRowDraftById[k];
+            });
             displayProducts();
+        }
+
+        function syncSellRowDraftFromDom() {
+            visibleProducts().forEach(p => {
+                const cb = document.getElementById(`sel-${p.id}`);
+                const qtyEl = document.getElementById(`qty-${p.id}`);
+                if (!cb && !qtyEl) return;
+                sellRowDraftById[p.id] = {
+                    checked: cb ? cb.checked : false,
+                    qtyStr: qtyEl ? qtyEl.value : ''
+                };
+            });
+        }
+
+        function applySellRowDraftToDom(products) {
+            products.forEach(p => {
+                const cb = document.getElementById(`sel-${p.id}`);
+                const qtyEl = document.getElementById(`qty-${p.id}`);
+                if (!cb || !qtyEl) return;
+                const maxQ = Math.max(p.quantity, 0);
+                const d = sellRowDraftById[p.id];
+                if (d) {
+                    cb.checked = d.checked;
+                    const raw = d.qtyStr;
+                    if (raw === '' || raw === '-') {
+                        qtyEl.value = raw;
+                    } else {
+                        const n = parseInt(raw, 10);
+                        if (!Number.isNaN(n)) {
+                            qtyEl.value = String(Math.min(Math.max(0, n), maxQ));
+                        } else {
+                            qtyEl.value = raw;
+                        }
+                    }
+                } else {
+                    cb.checked = false;
+                    qtyEl.value = maxQ > 0 ? '1' : '0';
+                    sellRowDraftById[p.id] = { checked: false, qtyStr: qtyEl.value };
+                }
+            });
         }
 
         function filterBySeller(seller) {
@@ -123,44 +174,62 @@
             displayProducts();
         }
 
+        function visibleProducts() {
+            return selectedSeller ? allProducts.filter(p => p.owner_name === selectedSeller) : allProducts;
+        }
+
+        function productActionsHtml(p) {
+            const sellDisabled = p.quantity < 1 ? 'disabled' : '';
+            const maxQ = Math.max(p.quantity, 0);
+            return `
+                <div class="actions-cell">
+                    <label class="batch-sell-label"><input type="checkbox" id="sel-${p.id}" title="Include this line in batch sale"> <span>Include</span></label>
+                    <input type="number" id="qty-${p.id}" min="0" max="${maxQ}" value="${maxQ > 0 ? 1 : 0}" class="purchase-input" title="Units to sell (single or batch)" inputmode="numeric">
+                    <button type="button" class="btn btn-success btn-sm" onclick="purchase(${p.id})" ${sellDisabled}>Sell</button>
+                    <button type="button" class="btn btn-ghost btn-sm" onclick="adjustStockDelta(${p.id}, -1)" title="Stock −1">−1</button>
+                    <button type="button" class="btn btn-ghost btn-sm" onclick="adjustStockDelta(${p.id}, 1)" title="Stock +1">+1</button>
+                </div>`;
+        }
+
         function displayProducts() {
-            let products = selectedSeller ? allProducts.filter(p => p.owner_name === selectedSeller) : allProducts;
-            
-            let html = '<table><thead><tr>';
+            syncSellRowDraftFromDom();
+            const products = visibleProducts();
+            const toolbar = document.getElementById('stock-toolbar');
+            const showActions = userRole === 'manager' || userRole === 'seller';
+            if (toolbar) {
+                toolbar.style.display = showActions && products.length ? 'flex' : 'none';
+            }
+
+            let html = '<table class="stock-table"><thead><tr>';
             if (userRole === 'manager') {
-                html += '<th>Owner</th><th>Location</th><th>Product</th><th>Type</th><th>Quantity</th><th>Actions</th>';
+                html += '<th>Owner</th><th>Location</th><th>Product</th><th>Type</th><th>Quantity</th><th class="col-delete">Delete</th><th>Sell / stock</th>';
             } else {
-                html += '<th>Product</th><th>Type</th><th>Quantity</th><th>Actions</th>';
+                html += '<th>Product</th><th>Type</th><th>Quantity</th><th>Sell / stock</th>';
             }
             html += '</tr></thead><tbody>';
-            
+
             products.forEach(p => {
-                const isOwner = p.user_id === currentUserId;
-                html += `<tr>`;
+                html += '<tr>';
                 if (userRole === 'manager') {
                     html += `<td><span class="location-badge clickable-seller" onclick="filterBySeller('${p.owner_name}')">${p.owner_name}</span></td>
                              <td><span class="location-badge">${p.workplace}</span></td>`;
                 }
+                const deleteCell = userRole === 'manager'
+                    ? `<td class="td-delete"><button type="button" class="btn btn-danger btn-sm" onclick="deleteProduct(${p.id})">Delete</button></td>`
+                    : '';
                 html += `
                     <td>${p.name}</td>
                     <td>${p.type}</td>
                     <td><span class="quantity-badge ${p.quantity < 10 ? 'low-stock' : ''}">${p.quantity}</span></td>
-                    <td>
-                        ${isOwner && userRole === 'manager' ? `
-                        <input type="number" id="qty-${p.id}" min="1" max="${p.quantity}" value="1" class="purchase-input">
-                        <button type="button" class="btn btn-success" onclick="purchase(${p.id})">Sell</button>
-                        <button type="button" class="btn btn-danger" onclick="deleteProduct(${p.id})">Delete</button>
-                        ` : (isOwner && userRole === 'seller' ? `
-                        <input type="number" id="qty-${p.id}" min="1" max="${p.quantity}" value="1" class="purchase-input">
-                        <button type="button" class="btn btn-success" onclick="purchase(${p.id})">Sell</button>
-                        ` : '—')}
-                    </td>
+                    ${deleteCell}
+                    <td class="td-actions">${showActions ? productActionsHtml(p) : '—'}</td>
                 </tr>`;
             });
-            
+
             html += '</tbody></table>';
             document.getElementById('stock-table').innerHTML = html;
-            
+            applySellRowDraftToDom(products);
+
             const totalQuantity = products.reduce((sum, p) => sum + p.quantity, 0);
             document.getElementById('total-summary').innerHTML = `<strong>Total products:</strong> ${totalQuantity} units`;
         }
@@ -210,26 +279,94 @@
         }
 
         async function purchase(id) {
-            const quantity = parseInt(document.getElementById(`qty-${id}`).value);
-            
+            const quantity = parseInt(document.getElementById(`qty-${id}`).value, 10);
+            if (!quantity || quantity < 1) {
+                alert('Enter a sale quantity of at least 1');
+                return;
+            }
+
             const res = await fetch(`/api/products/${id}/purchase`, {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
                 body: JSON.stringify({quantity})
             });
-            
+
             if (res.ok) {
                 loadProducts();
             } else {
-                alert('Insufficient stock');
+                const data = await res.json().catch(() => ({}));
+                alert(data.message || 'Sale failed');
             }
+        }
+
+        async function adjustStockDelta(id, delta) {
+            const p = allProducts.find(x => x.id === id);
+            if (!p) return;
+            const newQty = Math.max(0, p.quantity + delta);
+            const res = await fetch(`/api/products/${id}/quantity`, {
+                method: 'PATCH',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({quantity: newQty})
+            });
+            if (res.ok) {
+                loadProducts();
+            } else {
+                const data = await res.json().catch(() => ({}));
+                alert(data.message || 'Could not update stock');
+            }
+        }
+
+        async function batchSellSelected() {
+            const prods = visibleProducts();
+            const items = [];
+            for (const p of prods) {
+                const cb = document.getElementById(`sel-${p.id}`);
+                if (cb && cb.checked) {
+                    const q = parseInt(document.getElementById(`qty-${p.id}`).value, 10);
+                    if (q > 0) items.push({id: p.id, quantity: q});
+                }
+            }
+            if (!items.length) {
+                alert('Tick Include on one or more rows and set a sale quantity for each (at least 1).');
+                return;
+            }
+            const res = await fetch('/api/products/batch-purchase', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({items})
+            });
+            if (res.ok) {
+                prods.forEach(p => {
+                    const cb = document.getElementById(`sel-${p.id}`);
+                    if (cb) cb.checked = false;
+                    if (sellRowDraftById[p.id]) sellRowDraftById[p.id].checked = false;
+                });
+                loadProducts();
+            } else {
+                const data = await res.json().catch(() => ({}));
+                alert(data.message || 'Batch sale failed');
+            }
+        }
+
+        function clearBatchSelection() {
+            visibleProducts().forEach(p => {
+                const cb = document.getElementById(`sel-${p.id}`);
+                if (cb) cb.checked = false;
+                if (!sellRowDraftById[p.id]) sellRowDraftById[p.id] = { checked: false, qtyStr: '1' };
+                else sellRowDraftById[p.id].checked = false;
+            });
         }
 
         async function deleteProduct(id) {
             if (!confirm('Delete this product?')) return;
-            
-            await fetch(`/api/products/${id}`, {method: 'DELETE'});
-            loadProducts();
+
+            const res = await fetch(`/api/products/${id}`, {method: 'DELETE'});
+            if (res.ok) {
+                loadProducts();
+            } else {
+                const data = await res.json().catch(() => ({}));
+                alert(data.message || 'Could not delete product');
+            }
         }
 
         async function loadRequests() {
@@ -375,22 +512,23 @@
             }
         }
 
-        loadUser().then(() => {
-            loadProducts();
+        (async function initDashboard() {
+            await loadUser();
+            await loadProducts();
             if (userRole === 'manager') {
                 loadRequests();
                 loadUsers();
                 loadStatistics();
                 setInterval(() => {
-                    loadProducts();
                     loadRequests();
                     loadUsers();
                     loadStatistics();
                 }, 3000);
+                setInterval(loadProducts, 12000);
             } else {
-                setInterval(loadProducts, 3000);
+                setInterval(loadProducts, 12000);
             }
-        });
+        })();
     </script>
 </body>
 </html>
