@@ -8,11 +8,21 @@ app = Flask(__name__)
 app.secret_key = 'your-secret-key-change-in-production'
 
 DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'stock.db')
+ALLOWED_PRODUCTS = {
+    'mintice',
+    'blue berry ice',
+    'strawberry watermelon',
+    'grape ice',
+}
 
 def get_db():
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
     return conn
+
+
+def normalize_product_name(name):
+    return (name or '').strip().lower()
 
 def init_db():
     conn = get_db()
@@ -34,6 +44,8 @@ def init_db():
     )''')
     conn.execute('''CREATE TABLE IF NOT EXISTS requests (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
+        request_type TEXT DEFAULT 'stock_add',
+        product_id INTEGER,
         product_name TEXT NOT NULL,
         product_type TEXT NOT NULL,
         quantity INTEGER NOT NULL,
@@ -43,6 +55,11 @@ def init_db():
         status TEXT DEFAULT 'pending',
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     )''')
+    request_columns = {row['name'] for row in conn.execute("PRAGMA table_info(requests)").fetchall()}
+    if 'request_type' not in request_columns:
+        conn.execute("ALTER TABLE requests ADD COLUMN request_type TEXT DEFAULT 'stock_add'")
+    if 'product_id' not in request_columns:
+        conn.execute("ALTER TABLE requests ADD COLUMN product_id INTEGER")
     conn.execute('''CREATE TABLE IF NOT EXISTS sales (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         product_id INTEGER NOT NULL,
@@ -132,10 +149,21 @@ def get_products():
 @app.route('/api/products', methods=['POST'])
 @login_required
 def add_product():
+    if not session['is_admin']:
+        return jsonify({'success': False, 'message': 'Only admins can add products'}), 403
     data = request.json
+    name = normalize_product_name(data.get('name'))
+    try:
+        quantity = int(data['quantity'])
+    except (TypeError, ValueError, KeyError):
+        return jsonify({'success': False, 'message': 'Invalid quantity'}), 400
+    if name not in ALLOWED_PRODUCTS:
+        return jsonify({'success': False, 'message': 'Invalid product'}), 400
+    if quantity < 0:
+        return jsonify({'success': False, 'message': 'Invalid quantity'}), 400
     conn = get_db()
     conn.execute('INSERT INTO products (name, type, quantity, workplace, user_id) VALUES (?, ?, ?, ?, ?)',
-                (data['name'], data['type'], data['quantity'], session['workplace'], session['user_id']))
+                (name, '', quantity, session['workplace'], session['user_id']))
     conn.commit()
     conn.close()
     return jsonify({'success': True})
@@ -147,11 +175,20 @@ def add_product_for_user():
         return jsonify({'success': False}), 403
     
     data = request.json
+    name = normalize_product_name(data.get('name'))
+    try:
+        quantity = int(data['quantity'])
+    except (TypeError, ValueError, KeyError):
+        return jsonify({'success': False, 'message': 'Invalid quantity'}), 400
+    if name not in ALLOWED_PRODUCTS:
+        return jsonify({'success': False, 'message': 'Invalid product'}), 400
+    if quantity < 0:
+        return jsonify({'success': False, 'message': 'Invalid quantity'}), 400
     conn = get_db()
     user = conn.execute('SELECT workplace FROM users WHERE id = ?', (data['user_id'],)).fetchone()
     if user:
         conn.execute('INSERT INTO products (name, type, quantity, workplace, user_id) VALUES (?, ?, ?, ?, ?)',
-                    (data['name'], data['type'], data['quantity'], user['workplace'], data['user_id']))
+                    (name, '', quantity, user['workplace'], data['user_id']))
         conn.commit()
     conn.close()
     return jsonify({'success': True})
@@ -185,11 +222,22 @@ def purchase_product(id):
         conn.close()
         return jsonify({'success': False, 'message': 'Insufficient stock'}), 400
 
-    conn.execute('UPDATE products SET quantity = quantity - ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?', (qty, id))
-    conn.execute('INSERT INTO sales (product_id, seller_id, quantity) VALUES (?, ?, ?)', (id, product['user_id'], qty))
+    if session['is_admin']:
+        conn.execute('UPDATE products SET quantity = quantity - ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?', (qty, id))
+        conn.execute('INSERT INTO sales (product_id, seller_id, quantity) VALUES (?, ?, ?)', (id, product['user_id'], qty))
+    else:
+        product_info = conn.execute('SELECT name, type, workplace FROM products WHERE id = ?', (id,)).fetchone()
+        conn.execute(
+            '''INSERT INTO requests
+               (request_type, product_id, product_name, product_type, quantity, seller_id, seller_name, workplace)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?)''',
+            ('sale', id, product_info['name'], product_info['type'], qty, session['user_id'], session['username'], product_info['workplace'])
+        )
     conn.commit()
     conn.close()
-    return jsonify({'success': True})
+    if session['is_admin']:
+        return jsonify({'success': True, 'mode': 'completed'})
+    return jsonify({'success': True, 'mode': 'requested', 'message': 'Sale request sent for approval'})
 
 
 @app.route('/api/products/batch-purchase', methods=['POST'])
@@ -225,23 +273,37 @@ def batch_purchase():
             return jsonify({'success': False, 'message': 'Insufficient stock on one or more products'}), 400
         updates.append((qty, pid, product['user_id']))
 
-    for qty, pid, seller_id in updates:
-        conn.execute(
-            'UPDATE products SET quantity = quantity - ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
-            (qty, pid),
-        )
-        conn.execute(
-            'INSERT INTO sales (product_id, seller_id, quantity) VALUES (?, ?, ?)',
-            (pid, seller_id, qty),
-        )
+    if session['is_admin']:
+        for qty, pid, seller_id in updates:
+            conn.execute(
+                'UPDATE products SET quantity = quantity - ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
+                (qty, pid),
+            )
+            conn.execute(
+                'INSERT INTO sales (product_id, seller_id, quantity) VALUES (?, ?, ?)',
+                (pid, seller_id, qty),
+            )
+    else:
+        for qty, pid, seller_id in updates:
+            product_info = conn.execute('SELECT name, type, workplace FROM products WHERE id = ?', (pid,)).fetchone()
+            conn.execute(
+                '''INSERT INTO requests
+                   (request_type, product_id, product_name, product_type, quantity, seller_id, seller_name, workplace)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?)''',
+                ('sale', pid, product_info['name'], product_info['type'], qty, seller_id, session['username'], product_info['workplace'])
+            )
     conn.commit()
     conn.close()
-    return jsonify({'success': True})
+    if session['is_admin']:
+        return jsonify({'success': True, 'mode': 'completed'})
+    return jsonify({'success': True, 'mode': 'requested', 'message': 'Sale requests sent for approval'})
 
 
 @app.route('/api/products/<int:id>/quantity', methods=['PATCH'])
 @login_required
 def set_product_quantity(id):
+    if not session['is_admin']:
+        return jsonify({'success': False, 'message': 'Only admins can change stock quantities'}), 403
     data = request.json or {}
     try:
         new_qty = int(data['quantity'])
@@ -292,9 +354,22 @@ def get_requests():
 @login_required
 def create_request():
     data = request.json
+    name = normalize_product_name(data.get('name'))
+    try:
+        quantity = int(data['quantity'])
+    except (TypeError, ValueError, KeyError):
+        return jsonify({'success': False, 'message': 'Invalid quantity'}), 400
+    if name not in ALLOWED_PRODUCTS:
+        return jsonify({'success': False, 'message': 'Invalid product'}), 400
+    if quantity < 0:
+        return jsonify({'success': False, 'message': 'Invalid quantity'}), 400
     conn = get_db()
-    conn.execute('INSERT INTO requests (product_name, product_type, quantity, seller_id, seller_name, workplace) VALUES (?, ?, ?, ?, ?, ?)',
-                (data['name'], data['type'], data['quantity'], session['user_id'], session['username'], session['workplace']))
+    conn.execute(
+        '''INSERT INTO requests
+           (request_type, product_id, product_name, product_type, quantity, seller_id, seller_name, workplace)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?)''',
+        ('stock_add', None, name, '', quantity, session['user_id'], session['username'], session['workplace'])
+    )
     conn.commit()
     conn.close()
     return jsonify({'success': True})
@@ -308,8 +383,25 @@ def approve_request(id):
     conn = get_db()
     req = conn.execute('SELECT * FROM requests WHERE id = ?', (id,)).fetchone()
     if req:
-        conn.execute('INSERT INTO products (name, type, quantity, workplace, user_id) VALUES (?, ?, ?, ?, ?)',
-                    (req['product_name'], req['product_type'], req['quantity'], req['workplace'], req['seller_id']))
+        if req['request_type'] == 'sale':
+            product = conn.execute('SELECT id, quantity, user_id FROM products WHERE id = ?', (req['product_id'],)).fetchone()
+            if not product or product['user_id'] != req['seller_id']:
+                conn.close()
+                return jsonify({'success': False, 'message': 'Product no longer exists for this seller'}), 400
+            if product['quantity'] < req['quantity']:
+                conn.close()
+                return jsonify({'success': False, 'message': 'Insufficient stock to approve this sale'}), 400
+            conn.execute(
+                'UPDATE products SET quantity = quantity - ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
+                (req['quantity'], req['product_id'])
+            )
+            conn.execute(
+                'INSERT INTO sales (product_id, seller_id, quantity) VALUES (?, ?, ?)',
+                (req['product_id'], req['seller_id'], req['quantity'])
+            )
+        else:
+            conn.execute('INSERT INTO products (name, type, quantity, workplace, user_id) VALUES (?, ?, ?, ?, ?)',
+                        (req['product_name'], req['product_type'], req['quantity'], req['workplace'], req['seller_id']))
         conn.execute('UPDATE requests SET status = "approved" WHERE id = ?', (id,))
         conn.commit()
     conn.close()

@@ -43,8 +43,12 @@
         <section class="card" id="add-section">
             <h2 id="section-title">Add New Product</h2>
             <div class="form-row">
-                <input type="text" id="product-name" placeholder="Product name">
-                <input type="text" id="product-type" placeholder="Type">
+                <select id="product-name">
+                    <option value="mintice">mintice</option>
+                    <option value="blue berry ice">blue berry ice</option>
+                    <option value="strawberry watermelon">strawberry watermelon</option>
+                    <option value="grape ice">grape ice</option>
+                </select>
                 <input type="number" id="product-quantity" placeholder="Quantity" min="0">
                 <button type="button" class="btn btn-primary" onclick="addProduct()" id="add-btn">Add Product</button>
                 <button type="button" class="btn btn-warning" onclick="requestProduct()" id="request-btn" style="display:none;">Request from Manager</button>
@@ -75,8 +79,12 @@
         <section class="card" id="add-product-for-user" style="display:none;">
             <h2 id="add-product-title">Add Product for User</h2>
             <div class="form-row">
-                <input type="text" id="user-product-name" placeholder="Product name">
-                <input type="text" id="user-product-type" placeholder="Type">
+                <select id="user-product-name">
+                    <option value="mintice">mintice</option>
+                    <option value="blue berry ice">blue berry ice</option>
+                    <option value="strawberry watermelon">strawberry watermelon</option>
+                    <option value="grape ice">grape ice</option>
+                </select>
                 <input type="number" id="user-product-quantity" placeholder="Quantity" min="0">
                 <button type="button" class="btn btn-success" onclick="addProductForUser()">Add Product</button>
                 <button type="button" class="btn btn-danger" onclick="closeAddProductForUser()">Cancel</button>
@@ -102,9 +110,10 @@
             document.getElementById('user-info').textContent = user.username + (user.workplace ? ' · ' + user.workplace : '');
             if (userRole === 'seller') {
                 document.getElementById('navbar-title').textContent = user.username;
-                document.getElementById('section-title').textContent = 'Manage Products';
-                document.getElementById('request-btn').style.display = 'inline-block';
+                document.getElementById('add-section').style.display = 'block';
+                document.getElementById('section-title').textContent = 'Request Product';
                 document.getElementById('add-btn').style.display = 'none';
+                document.getElementById('request-btn').style.display = 'inline-block';
                 document.getElementById('stock-title').textContent = 'My Products';
             } else {
                 document.getElementById('add-section').style.display = 'none';
@@ -181,13 +190,17 @@
         function productActionsHtml(p) {
             const sellDisabled = p.quantity < 1 ? 'disabled' : '';
             const maxQ = Math.max(p.quantity, 0);
+            const sellLabel = userRole === 'seller' ? 'Request Sale' : 'Sell';
+            const stockButtons = userRole === 'manager'
+                ? `<button type="button" class="btn btn-ghost btn-sm" onclick="adjustStockDelta(${p.id}, -1)" title="Stock −1">−1</button>
+                    <button type="button" class="btn btn-ghost btn-sm" onclick="adjustStockDelta(${p.id}, 1)" title="Stock +1">+1</button>`
+                : '';
             return `
                 <div class="actions-cell">
                     <label class="batch-sell-label"><input type="checkbox" id="sel-${p.id}" title="Include this line in batch sale"> <span>Include</span></label>
                     <input type="number" id="qty-${p.id}" min="0" max="${maxQ}" value="${maxQ > 0 ? 1 : 0}" class="purchase-input" title="Units to sell (single or batch)" inputmode="numeric">
-                    <button type="button" class="btn btn-success btn-sm" onclick="purchase(${p.id})" ${sellDisabled}>Sell</button>
-                    <button type="button" class="btn btn-ghost btn-sm" onclick="adjustStockDelta(${p.id}, -1)" title="Stock −1">−1</button>
-                    <button type="button" class="btn btn-ghost btn-sm" onclick="adjustStockDelta(${p.id}, 1)" title="Stock +1">+1</button>
+                    <button type="button" class="btn btn-success btn-sm" onclick="purchase(${p.id})" ${sellDisabled}>${sellLabel}</button>
+                    ${stockButtons}
                 </div>`;
         }
 
@@ -202,9 +215,9 @@
 
             let html = '<table class="stock-table"><thead><tr>';
             if (userRole === 'manager') {
-                html += '<th>Owner</th><th>Location</th><th>Product</th><th>Type</th><th>Quantity</th><th class="col-delete">Delete</th><th>Sell / stock</th>';
+                html += '<th>Owner</th><th>Location</th><th>Product</th><th>Quantity</th><th class="col-delete">Delete</th><th>Sell / stock</th>';
             } else {
-                html += '<th>Product</th><th>Type</th><th>Quantity</th><th>Sell / stock</th>';
+                html += '<th>Product</th><th>Quantity</th><th>Sell / stock</th>';
             }
             html += '</tr></thead><tbody>';
 
@@ -219,7 +232,6 @@
                     : '';
                 html += `
                     <td>${p.name}</td>
-                    <td>${p.type}</td>
                     <td><span class="quantity-badge ${p.quantity < 10 ? 'low-stock' : ''}">${p.quantity}</span></td>
                     ${deleteCell}
                     <td class="td-actions">${showActions ? productActionsHtml(p) : '—'}</td>
@@ -236,45 +248,41 @@
 
         async function addProduct() {
             const name = document.getElementById('product-name').value;
-            const type = document.getElementById('product-type').value;
             const quantity = parseInt(document.getElementById('product-quantity').value);
             
-            if (!name || !type || !quantity) {
-                alert('Please fill all fields');
+            if (!name || Number.isNaN(quantity)) {
+                alert('Please select a product and enter quantity');
                 return;
             }
             
             await fetch('/api/products', {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({name, type, quantity})
+                body: JSON.stringify({name, quantity})
             });
             
-            document.getElementById('product-name').value = '';
-            document.getElementById('product-type').value = '';
+            document.getElementById('product-name').selectedIndex = 0;
             document.getElementById('product-quantity').value = '';
             loadProducts();
         }
 
         async function requestProduct() {
             const name = document.getElementById('product-name').value;
-            const type = document.getElementById('product-type').value;
             const quantity = parseInt(document.getElementById('product-quantity').value);
             
-            if (!name || !type || !quantity) {
-                alert('Please fill all fields');
+            if (!name || Number.isNaN(quantity)) {
+                alert('Please select a product and enter quantity');
                 return;
             }
             
             await fetch('/api/requests', {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({name, type, quantity})
+                body: JSON.stringify({name, quantity})
             });
             
             alert('Request sent to manager');
-            document.getElementById('product-name').value = '';
-            document.getElementById('product-type').value = '';
+            document.getElementById('product-name').selectedIndex = 0;
             document.getElementById('product-quantity').value = '';
         }
 
@@ -292,6 +300,10 @@
             });
 
             if (res.ok) {
+                const data = await res.json().catch(() => ({}));
+                if (data.mode === 'requested') {
+                    alert(data.message || 'Sale request sent for approval');
+                }
                 loadProducts();
             } else {
                 const data = await res.json().catch(() => ({}));
@@ -336,6 +348,10 @@
                 body: JSON.stringify({items})
             });
             if (res.ok) {
+                const data = await res.json().catch(() => ({}));
+                if (data.mode === 'requested') {
+                    alert(data.message || 'Sale requests sent for approval');
+                }
                 prods.forEach(p => {
                     const cb = document.getElementById(`sel-${p.id}`);
                     if (cb) cb.checked = false;
@@ -378,14 +394,15 @@
                 return;
             }
             
-            let html = '<div class="table-wrap"><table><thead><tr><th>Seller</th><th>Product</th><th>Type</th><th>Quantity</th><th>Location</th><th>Actions</th></tr></thead><tbody>';
+            let html = '<div class="table-wrap"><table><thead><tr><th>Seller</th><th>Request</th><th>Product</th><th>Quantity</th><th>Location</th><th>Actions</th></tr></thead><tbody>';
             
             requests.forEach(r => {
                 if (r.status === 'pending') {
+                    const requestLabel = r.request_type === 'sale' ? 'Sale approval' : 'Stock request';
                     html += `<tr>
                         <td>${r.seller_name}</td>
+                        <td><span class="badge ${r.request_type === 'sale' ? 'badge-warning' : 'badge-primary'}">${requestLabel}</span></td>
                         <td>${r.product_name}</td>
-                        <td>${r.product_type}</td>
                         <td>${r.quantity}</td>
                         <td><span class="location-badge">${r.workplace}</span></td>
                         <td>
@@ -445,8 +462,7 @@
             selectedUserForProduct = userId;
             document.getElementById('add-product-title').textContent = `Add Product for ${username}`;
             document.getElementById('add-product-for-user').style.display = 'block';
-            document.getElementById('user-product-name').value = '';
-            document.getElementById('user-product-type').value = '';
+            document.getElementById('user-product-name').selectedIndex = 0;
             document.getElementById('user-product-quantity').value = '';
         }
 
@@ -457,18 +473,17 @@
 
         async function addProductForUser() {
             const name = document.getElementById('user-product-name').value;
-            const type = document.getElementById('user-product-type').value;
             const quantity = parseInt(document.getElementById('user-product-quantity').value);
             
-            if (!name || !type || !quantity) {
-                alert('Please fill all fields');
+            if (!name || Number.isNaN(quantity)) {
+                alert('Please select a product and enter quantity');
                 return;
             }
             
             await fetch('/api/products/add-for-user', {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({user_id: selectedUserForProduct, name, type, quantity})
+                body: JSON.stringify({user_id: selectedUserForProduct, name, quantity})
             });
             
             closeAddProductForUser();

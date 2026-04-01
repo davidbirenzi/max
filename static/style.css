@@ -404,7 +404,8 @@ body {
     align-items: center;
 }
 
-.form-row input {
+.form-row input,
+.form-row select {
     flex: 1;
     min-width: 120px;
     padding: 12px 14px;
@@ -417,7 +418,8 @@ body {
     transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
 }
 
-.form-row input:focus {
+.form-row input:focus,
+.form-row select:focus {
     outline: none;
     border-color: var(--color-primary);
     box-shadow: 0 0 0 3px var(--color-primary-soft);
@@ -687,5 +689,5 @@ tbody tr:last-child td {
     .navbar { padding: var(--space-md) var(--space-lg); }
     .container { padding: var(--space-md); }
     .form-row { flex-direction: column; align-items: stretch; }
-    .form-row input { min-width: 0; }
+    .form-row input, .form-row select { min-width: 0; }
 }
